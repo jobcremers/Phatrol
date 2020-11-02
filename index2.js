@@ -19,7 +19,10 @@ const request = require('request-promise-native');
 const poll = require('promise-poller').default;
 const https = require('https');
 const readline = require('readline');
-
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
 
 // Initial Definitions
 const timeout = millis => new Promise(resolve => setTimeout(resolve, millis))
@@ -128,7 +131,7 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
 
     await console.log('________________________________________________________________________\n');
     await console.log('Waiting....');
-    await console.log("\nStarting Systems...");
+    await console.log("Starting Systems...");
 
     // Configure Puppeteer for launch (add attributes)
     const browser = await puppeteer.launch({
@@ -288,6 +291,11 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
         }
     }
 
+    rl.question('Ready to start? (Control + C if not). ', (answer) => {
+        if(answer === "y" || "Y" || "Yes" || "yes") {
+            startProcess();
+        }
+    });
 
 })();
 
