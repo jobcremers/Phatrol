@@ -29,7 +29,9 @@ const siteDetails = {
     pageurl: 'https://login.yahoo.com/account/challenge/recaptcha'
 };
 
+
 // Define Out-of-Async Functions
+// Password Generator
 function generatePassword() {
     let length = 8,
         charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@$",
@@ -41,6 +43,7 @@ function generatePassword() {
     return retVal + "$!";
 }
 
+// Random 3 digit generator
 function random() {
     var length = 3,
         charset = "1234567890",
@@ -51,6 +54,7 @@ function random() {
     return retVal;
 }
 
+// Captcha result requester
 function requestCaptchaResults(apiKey, requestId) {
     const url = `http://2captcha.com/res.php?key=${apiKey}&action=get&id=${requestId}&json=1`;
     return async function() {
@@ -63,18 +67,47 @@ function requestCaptchaResults(apiKey, requestId) {
     }
 }
 
-function requestSMS(id) {
-    const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=getFullSms&id=${id}`);
+// Request SMS data
+function requestSMS(id, times) {
+    if(times === '1') {
+        const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=1&id=${id}`);
+    }
+
+    const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=getStatus&id=${id}`);
     if (getSMS === "STATUS_WAIT_CODE" || "STATUS_CANCEL") {
-        return requestSMS(id);
+        return setTimeout(function() {requestSMS(id, '0') }, 3000);
     } else {
-        //const data = getSMS.split(":");
-        return getSMS;
+        const data = getSMS.split(":");
+        return data[1];
     }
 }
 
-function phoneBlocked(id) {
-    const putStat = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=8&id=${id}`);
+
+// Define Async functions
+// initiate captcha-solver
+async function initiateCaptchaRequest(apiKey) {
+    const formData = {
+        method: 'userrecaptcha',
+        googlekey: siteDetails.sitekey,
+        key: apiKey,
+        pageurl: siteDetails.pageurl,
+        json: 1
+    };
+    const response = await request.post('http://2captcha.com/in.php', {
+        form: formData
+    });
+    return JSON.parse(response).request;
+}
+
+
+// Bounce-back for results -> promise.
+async function pollForRequestResults(key, id, retries = 30, interval = 1500, delay = 15000) {
+    await timeout(delay);
+    return poll({
+        taskFn: requestCaptchaResults(key, id),
+        interval,
+        retries
+    });
 }
 
 // Start Async
@@ -157,7 +190,7 @@ function phoneBlocked(id) {
     // Start Async-Function for the process
     async function startProcess() {
         // Console.log(); for status-update
-        await console.log("Starting startProcess() fromt the top!");
+        await console.log("Starting startProcess() from the top!");
 
         // Request number from service-provider.
         const getNum = await httpGet('https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=getNumber&service=mb&ref=839469&country=6');
@@ -225,7 +258,7 @@ function phoneBlocked(id) {
                 visible: true,
             });
             await page.click('button[type="submit"]');
-            const sms = await requestSMS(id);
+            const sms = await requestSMS(id, '1');
             //const formattedCode = await requestSMS(id);
             //await page.type('#verification-code-field', formattedCode)
             return console.log(sms);
@@ -242,6 +275,16 @@ function phoneBlocked(id) {
 
     }
 
+    function phoneBlocked(id) {
+        const putStat = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=8&id=${id}`);
+        if(putStat === "ACCESS_CANCEL") {
+            console.log("Phone # didn't work - cancelled. \n")
+            return startProcess()
+        }
+    }
 
 
-})()
+})();
+
+
+
