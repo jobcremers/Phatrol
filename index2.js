@@ -71,6 +71,11 @@ function requestCaptchaResults(apiKey, requestId) {
 function requestSMS(id, times) {
     if(times === '1') {
         const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=1&id=${id}`);
+        if(getSMS === "ACCESS_READY") {
+            console.log("Number is waiting!\n");
+        } else {
+            return console.log("Something is wrong... exiting to save funds.\n");
+        }
     }
 
     const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=getStatus&id=${id}`);
