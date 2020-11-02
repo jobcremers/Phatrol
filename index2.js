@@ -23,6 +23,7 @@ const readline = require('readline');
 
 // Initial Definitions
 const timeout = millis => new Promise(resolve => setTimeout(resolve, millis))
+const c2apiKey = "8d1ffc723363da12c6847c2f770bd2bc";
 const siteDetails = {
     sitekey: '6LdWXicTAAAAAKIdor4xQ_gzgD-LgDP3siz7cop6',
     pageurl: 'https://login.yahoo.com/account/challenge/recaptcha'
@@ -70,6 +71,10 @@ function requestSMS(id) {
         //const data = getSMS.split(":");
         return getSMS;
     }
+}
+
+function phoneBlocked(id) {
+    const putStat = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=8&id=${id}`);
 }
 
 // Start Async
@@ -175,5 +180,68 @@ function requestSMS(id) {
         // Phone # minus countrycode.
         const num = data[2].substr(2);
 
+        // Password Generation.
+        const pass = generatePassword();
+
+        // Puppeteer Process Starts here:
+        // Set Puppeteer Environment variables.
+        await page.setDefaultNavigationTimeout(0)
+        await page.setExtraHTTPHeaders({
+            'Access-Control-Allow-Origin': '*'
+        });
+
+        // Tunnel to URL
+        await page.goto('https://login.yahoo.com/account/create');
+        // Type first name
+        await page.type('#usernamereg-firstName', firstname);
+        // Type last name
+        await page.type('#usernamereg-lastName', lastname);
+        // Add random digits
+        const email = firstname + lastname + "xo" + randoms;
+        // Type email
+        await page.type('#usernamereg-yid', email);
+        // Click other element to remove frame from blocking other form-input.
+        await page.click('#usernamereg-freeformGender');
+        // Select Indonesia country-code
+        await page.select('[name="shortCountryCode"]', 'ID');
+        // Type generated phone number
+        await page.type('#usernamereg-phone', num);
+        // Type birth month
+        await page.select('#usernamereg-month', b_month);
+        // Type birth day
+        await page.type('#usernamereg-day', b_day);
+        // Type birth year
+        await page.type('#usernamereg-year', b_year);
+        // Type generated password
+        await page.type('#usernamereg-password', pass);
+        // Click submit button
+        await page.click('#reg-submit-button');
+        // Await page.url
+        const cur_url = await page.url();
+
+        // Based on current url, select next steps (captcha or phone)
+        if (cur_url.includes("https://login.yahoo.com/account/challenge/phone-verify")) {
+            await page.waitForSelector('button[type="submit"]', {
+                visible: true,
+            });
+            await page.click('button[type="submit"]');
+            const sms = await requestSMS(id);
+            //const formattedCode = await requestSMS(id);
+            //await page.type('#verification-code-field', formattedCode)
+            return console.log(sms);
+
+        } else if (cur_url.includes("https://login.yahoo.com/account/challenge/captcha-verify")) {
+            const requestId = await initiateCaptchaRequest(c2apiKey);
+            const response = await pollForRequestResults(c2apiKey, requestId);
+            await page.evaluate("document.getElementById(\"recaptcha-iframe\").contentWindow.document.getElementById(\"g-recaptcha-response\").innerHTML=\'" + response + "\';");
+            return console.log("Captcha Found");
+        } else if (cur_url.includes("https://login.yahoo.com/account/challenge/fail")) {
+            await phoneBlocked(id);
+            await console.log("Phone Blocked");
+        }
+
     }
+
+
+
 })()
