@@ -26,7 +26,7 @@ const rl = readline.createInterface({
 
 // Initial Definitions
 const timeout = millis => new Promise(resolve => setTimeout(resolve, millis))
-const c2apiKey = "8d1ffc723363da12c6847c2f770bd2bc";
+const c2apiKey = "APIKEY";
 const siteDetails = {
     sitekey: '6LdWXicTAAAAAKIdor4xQ_gzgD-LgDP3siz7cop6',
     pageurl: 'https://login.yahoo.com/account/challenge/recaptcha'
@@ -60,8 +60,8 @@ function random() {
 // Captcha result requester
 function requestCaptchaResults(apiKey, requestId) {
     const url = `http://2captcha.com/res.php?key=${apiKey}&action=get&id=${requestId}&json=1`;
-    return async function() {
-        return new Promise(async function(resolve, reject) {
+    return async function () {
+        return new Promise(async function (resolve, reject) {
             const rawResponse = await request.get(url);
             const resp = JSON.parse(rawResponse);
             if (resp.status === 0) return reject(resp.request);
@@ -70,11 +70,23 @@ function requestCaptchaResults(apiKey, requestId) {
     }
 }
 
+// Start httpGet in-value function
+const httpGet = (url) => {
+    return new Promise((resolve, reject) => {
+        https.get(url, res => {
+            res.setEncoding('utf8');
+            let body = '';
+            res.on('data', chunk => body += chunk);
+            res.on('end', () => resolve(body));
+        }).on('error', reject);
+    });
+};
+
 // Request SMS data
 function requestSMS(id, times) {
-    if(times === '1') {
+    if (times === '1') {
         const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=1&id=${id}`);
-        if(getSMS === "ACCESS_READY") {
+        if (getSMS === "ACCESS_READY") {
             console.log("Number is waiting!\n");
         } else {
             return console.log("Something is wrong... exiting to save funds.\n");
@@ -83,7 +95,7 @@ function requestSMS(id, times) {
 
     const getSMS = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=getStatus&id=${id}`);
     if (getSMS === "STATUS_WAIT_CODE" || "STATUS_CANCEL") {
-        return setTimeout(function() {requestSMS(id, '0') }, 3000);
+        return setTimeout(function () { requestSMS(id, '0') }, 3000);
     } else {
         const data = getSMS.split(":");
         return data[1];
@@ -109,7 +121,7 @@ async function initiateCaptchaRequest(apiKey) {
 
 
 // Bounce-back for results -> promise.
-async function pollForRequestResults(key, id, retries = 30, interval = 1500, delay = 15000) {
+async function pollForRequestResults(key, id, retries = 30, interval = 5000, delay = 15000) {
     await timeout(delay);
     return poll({
         taskFn: requestCaptchaResults(key, id),
@@ -138,6 +150,7 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
         headless: false,
         args: [
             '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
             '--user-data-dir=\\Phatrol'
         ],
     });
@@ -145,17 +158,7 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
     // Request newPage (headless browser)
     const page = await browser.newPage();
 
-    // Start httpGet in-value function
-    const httpGet = url => {
-        return new Promise((resolve, reject) => {
-            https.get(url, res => {
-                res.setEncoding('utf8');
-                let body = '';
-                res.on('data', chunk => body += chunk);
-                res.on('end', () => resolve(body));
-            }).on('error', reject);
-        });
-    };
+
 
     // <--> START PERSONAL-DATA GENERATION <-->
 
@@ -209,7 +212,7 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
             return console.log("Error! CAN NOT activate SMS!");
         } else if (getNum === "NO_NUMBERS") {
             await console.log("Error! No numbers available -  am waiting 3 seconds to try again!");
-            return setTimeout(function(){startProcess()}, 3500)
+            return setTimeout(function () { startProcess() }, 3500)
         }
 
         // Total Data splitted to multiple variables.
@@ -271,11 +274,15 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
             //await page.type('#verification-code-field', formattedCode)
             return console.log(sms);
 
-        } else if (cur_url.includes("https://login.yahoo.com/account/challenge/captcha-verify")) {
+        } else if (cur_url.includes("https://login.yahoo.com/account/challenge/captcha-verify") || cur_url.includes("https://login.yahoo.com/account/challenge/recaptcha")) {
             const requestId = await initiateCaptchaRequest(c2apiKey);
             const response = await pollForRequestResults(c2apiKey, requestId);
             await page.evaluate("document.getElementById(\"recaptcha-iframe\").contentWindow.document.getElementById(\"g-recaptcha-response\").innerHTML=\'" + response + "\';");
-            return console.log("Captcha Found");
+
+            await page.evaluate("document.getElementById(\"recaptcha-iframe\").contentWindow.document.getElementById(\"recaptcha-submit\").disabled=false;");
+
+            await page.evaluate("document.getElementById(\"recaptcha-iframe\").contentWindow.document.getElementById(\"recaptcha-submit\").click();");
+
         } else if (cur_url.includes("https://login.yahoo.com/account/challenge/fail")) {
             await phoneBlocked(id);
             await console.log("Phone Blocked");
@@ -285,19 +292,18 @@ async function pollForRequestResults(key, id, retries = 30, interval = 1500, del
 
     function phoneBlocked(id) {
         const putStat = httpGet(`https://sms-activate.ru/stubs/handler_api.php?api_key=940054f3775c2e49f71fd64c4c3ef116&action=setStatus&status=8&id=${id}`);
-        if(putStat === "ACCESS_CANCEL") {
+        if (putStat === "ACCESS_CANCEL") {
             console.log("Phone # didn't work - cancelled. \n")
             return startProcess()
         }
     }
 
     rl.question('Ready to start? (Control + C if not). ', (answer) => {
-        if(answer === "y" || "Y" || "Yes" || "yes") {
+        if (answer === "y" || "Y" || "Yes" || "yes") {
             startProcess();
         }
     });
 
 })();
-
 
 
